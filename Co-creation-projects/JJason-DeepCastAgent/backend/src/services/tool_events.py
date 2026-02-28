@@ -130,14 +130,14 @@ class ToolCallTracker:
 
     def reset(self) -> None:
         """
-        清除记录的工具调用事件。
+        重置当前已记录的工具调用事件。
         
-        此方法是线程安全的，确保在多线程环境中安全调用。
+        该方法会清空内部事件列表并重置游标，用于在同一
+        Tracker 实例上复用时避免跨任务/会话的事件泄漏。
         """
         with self._lock:
             self._events.clear()
             self._cursor = 0
-
     def as_dicts(self) -> list[dict[str, Any]]:
         """
         暴露原始事件的快照以实现向后兼容性。

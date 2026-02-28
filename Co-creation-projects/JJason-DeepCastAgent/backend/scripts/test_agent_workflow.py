@@ -1,4 +1,3 @@
-import os
 import sys
 from pathlib import Path
 
@@ -17,10 +16,12 @@ if env_path.exists():
 else:
     print(f"Warning: .env file not found at {env_path}")
 
-from config import Configuration, SearchAPI
-from agent import DeepResearchAgent
-
 import logging
+import shutil
+
+from agent import DeepResearchAgent
+from config import Configuration, SearchAPI
+
 
 def configure_logging():
     # Set global level to INFO first
@@ -74,7 +75,6 @@ def main():
     output_dir = Path(config.audio_output_dir)
     if output_dir.exists():
         print(f"Cleaning up output directory: {output_dir}")
-        import shutil
         shutil.rmtree(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     
@@ -88,10 +88,15 @@ def main():
         print("WORKFLOW COMPLETED SUCCESSFULLY")
         print("="*50)
         
-        print(f"Report Summary Length: {len(result.running_summary)}")
+        # running_summary may be None; guard against calling len(None)
+        summary_len = len(result.running_summary) if result.running_summary else 0
+        print(f"Report Summary Length: {summary_len}")
         
         print("\n" + "="*20 + " REPORT CONTENT " + "="*20)
-        print(result.running_summary)
+        if result.running_summary:
+            print(result.running_summary)
+        else:
+            print("(No report generated)")
         print("="*56 + "\n")
         
         if result.podcast_script:

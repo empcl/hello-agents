@@ -14,6 +14,17 @@ export interface StreamOptions {
   signal?: AbortSignal;
 }
 
+/**
+ * 主动取消后端正在执行的研究任务。
+ */
+export async function cancelResearch(): Promise<void> {
+  try {
+    await fetch(`${baseURL}/research/cancel`, { method: "POST" });
+  } catch (err) {
+    console.warn("Failed to send cancel request:", err);
+  }
+}
+
 export async function runResearchStream(
   payload: ResearchRequest,
   onEvent: (event: ResearchStreamEvent) => void,

@@ -1,5 +1,6 @@
 import os
 import sys
+
 import requests
 from dotenv import load_dotenv
 
@@ -10,6 +11,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../src'
 load_dotenv(os.path.join(os.path.dirname(__file__), '../.env'))
 
 def test_llm_api():
+    """测试 ECNU LLM API 是否可用。"""
     api_key = os.getenv("LLM_API_KEY")
     base_url = os.getenv("LLM_BASE_URL", "https://chat.ecnu.edu.cn/open/api/v1")
     model = os.getenv("LLM_MODEL_ID", "ecnu-max")
@@ -20,7 +22,7 @@ def test_llm_api():
     else:
         url = base_url
 
-    print(f"Testing LLM API...")
+    print("Testing LLM API...")
     print(f"URL: {url}")
     print(f"Model: {model}")
     print(f"API Key: {api_key[:8]}..." if api_key else "API Key: None")
@@ -48,7 +50,7 @@ def test_llm_api():
         if response.status_code == 200:
             result = response.json()
             content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
-            print(f"✅ Success!")
+            print("✅ Success!")
             print(f"Response: {content}")
         else:
             print(f"❌ Failed with status {response.status_code}")

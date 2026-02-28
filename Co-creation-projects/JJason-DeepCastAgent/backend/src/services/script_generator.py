@@ -39,11 +39,23 @@ SCRIPT_JSON_SCHEMA = {
 class ScriptGenerationService:
     """从研究报告生成对话脚本（使用结构化输出）。"""
 
-    def __init__(self, script_agent, config: Configuration) -> None:
-        """初始化服务。"""
+    def __init__(
+        self,
+        config: Configuration,
+        script_agent: OpenAI | None = None,
+    ) -> None:
+        """
+        初始化服务。
+
+        Args:
+            config: 全局配置对象。
+            script_agent: 可选的自定义脚本生成客户端/代理。
+                如果提供，将直接使用该客户端；否则将基于配置创建默认的 OpenAI 客户端。
+        """
         self._config = config
-        # 直接使用 OpenAI 客户端以支持结构化输出
-        self._client = OpenAI(
+        # 优先使用注入的自定义客户端，以保持向后兼容和可测试性；
+        # 如果未提供，则基于配置创建默认的 OpenAI 客户端以支持结构化输出。
+        self._client = script_agent or OpenAI(
             api_key=config.llm_api_key,
             base_url=config.llm_base_url,
         )

@@ -9,7 +9,17 @@ from pydantic import BaseModel, Field, field_validator
 BACKEND_ROOT = Path(__file__).resolve().parent.parent
 
 class SearchAPI(Enum):
-    """搜索 API 提供商（仅支持混合搜索：Tavily + SerpApi）。"""
+    """搜索 API 提供商的枚举。
+
+    兼容旧测试和示例：
+    - TAVILY: 使用 Tavily 搜索后端
+    - SERPAPI: 使用 SerpApi
+    - DDG: DuckDuckGo (内置 ddgs)
+    - HYBRID: 混合策略（Tavily + SerpApi），为默认值
+    """
+    TAVILY = "tavily"
+    SERPAPI = "serpapi"
+    DDG = "ddg"
     HYBRID = "hybrid"
 
 
@@ -147,40 +157,12 @@ class Configuration(BaseModel):
             if env_key in os.environ:
                 raw_values[field_name] = os.environ[env_key]
 
-        # 显式环境名称的额外映射
-        env_aliases = {
-            "llm_provider": os.getenv("LLM_PROVIDER"),
-            "llm_api_key": os.getenv("LLM_API_KEY"),
-            "llm_model_id": os.getenv("LLM_MODEL_ID"),
-            "smart_llm_model": os.getenv("SMART_LLM_MODEL"),
-            "fast_llm_model": os.getenv("FAST_LLM_MODEL"),
-            "llm_base_url": os.getenv("LLM_BASE_URL"),
-            "max_web_research_loops": os.getenv("MAX_WEB_RESEARCH_LOOPS"),
-            "fetch_full_page": os.getenv("FETCH_FULL_PAGE"),
-            "strip_thinking_tokens": os.getenv("STRIP_THINKING_TOKENS"),
-            "use_tool_calling": os.getenv("USE_TOOL_CALLING"),
-            "search_api": os.getenv("SEARCH_API"),
-            "enable_notes": os.getenv("ENABLE_NOTES"),
-            "notes_workspace": os.getenv("NOTES_WORKSPACE"),
-            "tts_api_key": os.getenv("TTS_API_KEY"),
-            "tts_base_url": os.getenv("TTS_BASE_URL"),
-            "tts_model": os.getenv("TTS_MODEL"),
-            "audio_output_dir": os.getenv("AUDIO_OUTPUT_DIR"),
-            "ffmpeg_path": os.getenv("FFMPEG_PATH"),
-            "tavily_api_key": os.getenv("TAVILY_API_KEY"),
-            "serpapi_api_key": os.getenv("SERPAPI_API_KEY"),
-        }
-
         # 处理 NO_PROXY
         no_proxy = os.getenv("NO_PROXY")
         if no_proxy:
             os.environ["NO_PROXY"] = no_proxy
             # 同时设置为小写以兼容
             os.environ["no_proxy"] = no_proxy
-
-        for key, value in env_aliases.items():
-            if value is not None:
-                raw_values.setdefault(key, value)
 
         if overrides:
             for key, value in overrides.items():

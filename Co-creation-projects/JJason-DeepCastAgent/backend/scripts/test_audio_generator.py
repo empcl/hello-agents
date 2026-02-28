@@ -1,14 +1,13 @@
-import unittest
-from unittest.mock import MagicMock, patch, mock_open
-import sys
 import os
-from pathlib import Path
+import sys
+import unittest
+from unittest.mock import MagicMock, mock_open, patch
 
 # Add src to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
 
 from services.audio_generator import AudioGenerationService
-from config import Configuration
+
 
 class TestAudioGenerationService(unittest.TestCase):
     def setUp(self):

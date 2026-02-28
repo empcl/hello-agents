@@ -257,7 +257,7 @@
 
 <script lang="ts" setup>
 import { reactive, ref, nextTick } from "vue";
-import { runResearchStream, type ResearchStreamEvent } from "./services/api";
+import { runResearchStream, cancelResearch, type ResearchStreamEvent } from "./services/api";
 import MarkdownIt from "markdown-it";
 
 // Markdown renderer
@@ -431,6 +431,9 @@ function handleStreamEvent(event: ResearchStreamEvent) {
     if (stage === "report") productionStage.value = "research";
     else if (stage === "script") productionStage.value = "script";
     else if (stage === "audio") productionStage.value = "audio";
+    // Backend distinguishes a separate "synthesis" stage for final audio stitching,
+    // but the UI groups it under the overall "audio" production stage for simplicity.
+    else if (stage === "synthesis") productionStage.value = "audio";
   }
 
   // 3. Task / Tool Updates (Simplified logging)
@@ -530,10 +533,13 @@ function handleStreamEvent(event: ResearchStreamEvent) {
 function cancelProduction() {
   if (confirm("确定要取消制作吗？")) {
     addLog("🛑 用户请求取消制作...");
+    // 先通知后端停止，再断开 SSE 连接
+    cancelResearch().then(() => {
+      addLog("✅ 后端已接收取消请求");
+    });
     if (abortController) {
       abortController.abort();
       abortController = null;
-      addLog("✅ 已发送取消请求到后端");
     }
     stopWaitingAnimation();
     productionStage.value = "done";

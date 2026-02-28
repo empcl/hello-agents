@@ -1,5 +1,6 @@
 import os
 import sys
+
 import requests
 from dotenv import load_dotenv
 
@@ -14,7 +15,7 @@ def test_tts_api():
     base_url = os.getenv("TTS_BASE_URL", "https://chat.ecnu.edu.cn/open/api/v1/audio/speech")
     model = os.getenv("TTS_MODEL", "ecnu-tts")
     
-    print(f"Testing TTS API...")
+    print("Testing TTS API...")
     print(f"URL: {base_url}")
     print(f"Model: {model}")
     print(f"API Key: {api_key[:8]}..." if api_key else "API Key: None")

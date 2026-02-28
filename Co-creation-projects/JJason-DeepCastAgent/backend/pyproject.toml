@@ -46,6 +46,14 @@ lint.select = [
     "T20",  # flake8-print
 ]
 lint.ignore = [
+    "D100",  # Missing docstring in public module
+    "D101",  # Missing docstring in public class
+    "D102",  # Missing docstring in public method
+    "D103",  # Missing docstring in public function
+    "D104",  # Missing docstring in public package
+    "D105",  # Missing docstring in magic method
+    "D106",  # Missing docstring in public nested class
+    "D107",  # Missing docstring in __init__
     "D400",  # 中文 docstring 句号检测误报
     "D415",  # 中文 docstring 句号检测误报
     "D212",  # 多行 docstring 首行格式
@@ -55,6 +63,7 @@ lint.ignore = [
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["D", "UP"]
 "scripts/*" = ["T201"]
+"backend/scripts/test_agent_workflow.py" = ["E402"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"

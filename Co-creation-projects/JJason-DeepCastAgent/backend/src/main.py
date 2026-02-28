@@ -75,6 +75,9 @@ def create_app() -> FastAPI:
     """创建并配置 FastAPI 应用实例。"""
     app = FastAPI(title="DeepCast - 自动播客生成智能体")
 
+    # 当前活跃的研究 agent 引用，用于支持取消操作
+    _active_agent: dict[str, DeepResearchAgent | None] = {"current": None}
+
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
@@ -182,6 +185,20 @@ def create_app() -> FastAPI:
             podcast_script=podcast_resp,
         )
 
+    @app.post("/research/cancel")
+    async def cancel_research() -> dict[str, str]:
+        """
+        主动取消当前正在执行的研究任务。
+        
+        前端可以通过此端点显式通知后端停止处理。
+        """
+        agent = _active_agent.get("current")
+        if agent and not agent.is_cancelled():
+            logger.info("Cancel requested via /research/cancel endpoint")
+            agent.cancel()
+            return {"status": "cancelled", "message": "取消请求已发送"}
+        return {"status": "no_task", "message": "当前没有正在运行的任务"}
+
     @app.post("/research/stream")
     async def stream_research(payload: ResearchRequest, request: Request) -> StreamingResponse:
         """
@@ -193,66 +210,76 @@ def create_app() -> FastAPI:
         try:
             config = _build_config(payload)
             agent = DeepResearchAgent(config=config)
+            _active_agent["current"] = agent  # 注册活跃 agent 以支持取消
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
         async def event_iterator():
+            import concurrent.futures
+
+            loop = asyncio.get_event_loop()
+            # 用 asyncio.Queue 桥接同步生成器和异步循环
+            # 生成器在单一后台线程中完整运行，避免并发调用 next() 破坏生成器状态
+            event_queue: asyncio.Queue = asyncio.Queue()
+            _SENTINEL = object()  # 生成器结束的哨兵值
+
+            def run_generator():
+                """在后台线程中完整运行生成器，将事件逐一推入异步队列。"""
+                try:
+                    for event in agent.run_stream(payload.topic):
+                        loop.call_soon_threadsafe(event_queue.put_nowait, event)
+                except Exception as exc:
+                    logger.exception("Generator raised exception")
+                    loop.call_soon_threadsafe(
+                        event_queue.put_nowait,
+                        {"type": "error", "detail": str(exc)},
+                    )
+                finally:
+                    loop.call_soon_threadsafe(event_queue.put_nowait, _SENTINEL)
+
+            # 启动断开连接监控任务
+            async def monitor_disconnect():
+                while True:
+                    if await request.is_disconnected():
+                        logger.info("Client disconnected detected by monitor")
+                        agent.cancel()
+                        return
+                    await asyncio.sleep(0.5)
+
+            monitor_task = asyncio.create_task(monitor_disconnect())
+            executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+            loop.run_in_executor(executor, run_generator)
+
             try:
-                # 在线程池中运行同步生成器
-                import concurrent.futures
-                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                    # 将生成器转换为可在线程中运行的迭代
-                    gen = agent.run_stream(payload.topic)
-                    
-                    # 启动一个后台任务来监控连接状态
-                    async def monitor_disconnect():
-                        while True:
-                            if await request.is_disconnected():
-                                logger.info("Client disconnected detected by monitor")
-                                agent.cancel()
-                                return True
-                            await asyncio.sleep(0.5)
-                    
-                    monitor_task = asyncio.create_task(monitor_disconnect())
-                    
+                while True:
                     try:
-                        while True:
-                            # 检查是否已取消
-                            if agent.is_cancelled():
-                                logger.info("✅ 本次任务已取消")
-                                yield f'data: {{"type": "cancelled", "message": "研究任务已被用户取消"}}\\n\\n'
-                                break
-                            
-                            # 在线程池中获取下一个事件
-                            loop = asyncio.get_event_loop()
-                            try:
-                                event = await asyncio.wait_for(
-                                    loop.run_in_executor(executor, lambda: next(gen, None)),
-                                    timeout=0.5
-                                )
-                            except asyncio.TimeoutError:
-                                # 超时时继续检查连接状态
-                                continue
-                            
-                            if event is None:
-                                break
-                                
-                            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
-                            
-                            # 如果是完成或取消事件，退出循环
-                            if event.get("type") in ("done", "cancelled", "error"):
-                                break
-                    finally:
-                        monitor_task.cancel()
-                        try:
-                            await monitor_task
-                        except asyncio.CancelledError:
-                            pass
-                            
-            except Exception as exc:  # pragma: no cover - defensive guardrail
-                logger.exception("Streaming research failed")
-                error_payload = {"type": "error", "detail": str(exc)}
-                yield f"data: {json.dumps(error_payload, ensure_ascii=False)}\n\n"
+                        # 带超时等待，以便能及时响应取消
+                        item = await asyncio.wait_for(event_queue.get(), timeout=1.0)
+                    except asyncio.TimeoutError:
+                        # 超时时检查是否已取消（用于客户端断开但生成器还未感知的情况）
+                        if agent.is_cancelled():
+                            logger.info("✅ 本次任务已取消（超时检测）")
+                            yield 'data: {"type": "cancelled", "message": "研究任务已被用户取消"}\n\n'
+                        continue
+
+                    # 哨兵：生成器已结束
+                    if item is _SENTINEL:
+                        break
+
+                    event = item
+                    yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+
+                    if event.get("type") in ("done", "cancelled", "error"):
+                        break
+            finally:
+                monitor_task.cancel()
+                try:
+                    await monitor_task
+                except asyncio.CancelledError:
+                    pass
+                # 不等待后台线程（daemon），立即返回响应
+                executor.shutdown(wait=False)
+                _active_agent["current"] = None
 
         return StreamingResponse(
             event_iterator(),

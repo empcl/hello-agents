@@ -33,13 +33,14 @@ class PodcastSynthesisService:
         # 确保 pydub/ffmpeg 可用 - 假设 ffmpeg 已安装在系统中
         # 如果没有，pydub 可能会发出警告或失败，但我们会捕获异常。
 
-    def synthesize_podcast(self, audio_files: list[str], task_id: str = "default") -> str | None:
+    def synthesize_podcast(self, audio_files: list[str], task_id: str = "default", cancel_check: callable = None) -> str | None:
         """
         将音频文件组合成单个播客 MP3。
 
         Args:
             audio_files: 按顺序排列的输入音频文件路径列表。
             task_id: 输出文件名的唯一标识符。
+            cancel_check: 可选的取消检查回调，返回 True 表示已取消。
 
         Returns:
             最终播客文件的路径，如果失败则为 None。
@@ -56,6 +57,11 @@ class PodcastSynthesisService:
 
             valid_segments_count = 0
             for file_path in audio_files:
+                # 检查是否已取消
+                if cancel_check and cancel_check():
+                    logger.info("Podcast synthesis cancelled.")
+                    return None
+                    
                 path = Path(file_path)
                 if not path.exists():
                     logger.warning("Audio file not found: %s", file_path)

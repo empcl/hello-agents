@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from pathlib import Path
+from threading import Event
 
 import requests
 
@@ -44,7 +45,8 @@ class AudioGenerationService:
         self, 
         script: list[dict[str, str]], 
         task_id: str = "default",
-        progress_callback: Callable[[int, int, str, str], bool | None] | None = None
+        progress_callback: Callable[[int, int, str, str], bool | None] | None = None,
+        cancel_event: Event | None = None,
     ) -> list[str]:
         """
         为给定的脚本生成音频文件。
@@ -54,6 +56,7 @@ class AudioGenerationService:
             task_id: 当前任务/会话的唯一标识符
             progress_callback: 可选的进度回调函数，签名为 (current, total, role, content_preview) -> Optional[bool]
                               返回 False 表示应该停止生成，返回 True 或 None 表示继续
+            cancel_event: 可选的取消事件，set 时立即停止生成
             
         Returns:
             生成的音频文件的路径列表
@@ -75,14 +78,11 @@ class AudioGenerationService:
             
             if not role or not content:
                 continue
-            
-            # 调用进度回调，检查是否应该停止
-            if progress_callback:
-                content_preview = content[:30] + "..." if len(content) > 30 else content
-                should_continue = progress_callback(index + 1, total, role, content_preview)
-                if should_continue is False:
-                    logger.info("Audio generation cancelled by callback")
-                    break
+
+            # 直接检查取消事件（最可靠的方式）
+            if cancel_event and cancel_event.is_set():
+                logger.info("Audio generation cancelled before TTS %d/%d (cancel_event)", index + 1, total)
+                break
                 
             voice_id = self._get_voice_for_role(role)
             if not voice_id:
@@ -97,6 +97,19 @@ class AudioGenerationService:
             if self._call_tts_api(content, voice_id, file_path):
                 generated_files.append(str(file_path))
                 logger.info("[TTS %d/%d] ✓ %s 语音生成成功", index + 1, total, role)
+                
+                # TTS 完成后再次检查取消
+                if cancel_event and cancel_event.is_set():
+                    logger.info("Audio generation cancelled after TTS %d/%d (cancel_event)", index + 1, total)
+                    break
+                
+                # 在 TTS 成功之后才调用进度回调，通知上层该片段已完成
+                if progress_callback:
+                    content_preview = content[:30] + "..." if len(content) > 30 else content
+                    should_continue = progress_callback(index + 1, total, role, content_preview)
+                    if should_continue is False:
+                        logger.info("Audio generation cancelled by callback after TTS %d/%d", index + 1, total)
+                        break
             else:
                 logger.error("[TTS %d/%d] ✗ %s 语音生成失败", index + 1, total, role)
                 
@@ -150,11 +163,13 @@ class AudioGenerationService:
         
         try:
             logger.debug("Calling TTS API for voice %s: %s...", voice, text[:20])
+            # Use configurable timeout if available; default to 300 seconds for robustness.
+            timeout = getattr(self._config, "tts_timeout", 300)
             response = requests.post(
                 self._config.tts_base_url,
                 json=payload,
                 headers=headers,
-                timeout=300
+                timeout=timeout
             )
             
             if response.status_code == 200:

@@ -42,16 +42,6 @@ class SummaryState:
 
 
 @dataclass(kw_only=True)
-class SummaryStateInput:
-    """深度研究工作流的输入状态模型。
-    
-    用于指定研究主题。
-    """
-
-    research_topic: str | None = field(default=None)  # 研究主题
-
-
-@dataclass(kw_only=True)
 class SummaryStateOutput:
     """深度研究工作流的输出状态模型。
     
